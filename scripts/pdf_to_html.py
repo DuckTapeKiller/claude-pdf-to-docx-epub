@@ -1833,8 +1833,7 @@ def build_blocks(all_lines, geometry, config, report: Report, images: dict | Non
             indented = indent * 0.5 < line.left - margin < indent * 3 and not line.beside_dropcap
             if current is not None and current.kind == kind == 'p':
                 gap = None if new_page else line.top - previous_line.bottom
-                divided = previous_line.text.rstrip().endswith('\u00ad')   # a word continues here
-                if not divided and (indented or (gap is not None and gap > pitch * 0.9)):
+                if indented or (gap is not None and gap > pitch * 0.9):
                     flush()
                     current = Block('p', [line], page=number)
                     if not indented:
@@ -2303,6 +2302,8 @@ def main() -> None:
     media_rel = Path(os.path.relpath(args.media.resolve(), args.out.resolve().parent)).as_posix() if args.media else None
     html_text = render(blocks, notes, all_lines, geometry, vocab, config, report, media_rel, pages)
 
+    # a word divided across two blocks by a scan's line-end mark
+    html_text = re.sub(r'\u00ad</p>(?:</div>)?\n(?:<div[^>]*>)?<p>(?=[a-záéíóúñ])', '', html_text)
     args.out.write_text(html_text, encoding='utf-8')
     report_path = args.report or args.out.with_suffix('.report.json')
     data = dict(report.data)
