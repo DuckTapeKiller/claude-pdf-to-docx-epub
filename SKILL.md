@@ -73,6 +73,23 @@ running heads and chapter openings look. Note the book's language: set it in the
   (`ocrmypdf -l eng+spa book.pdf ocr.pdf`), then work from `ocr.pdf`.
 - Fonts with `uni no` or `Custom` encoding, or a PDF re-saved by macOS Preview
   ("Quartz PDFContext" producer), often extract as garbage (section 3).
+- A scan with an OCR text layer (`pdfimages -list` shows one full-page image per page,
+  `pdffonts` a single font) gives the script no typography to read:
+  - Set `"min_figure_area": 2` so page scans are not kept as figures, then look at the
+    pages with little text for real illustrations and insert those by hand.
+  - Set `"quote_sizes": [1]` and `"note_size": 1` when OCR size differences create false
+    quotations or notes, and only after checking the book has no real footnotes.
+  - If paragraphs fuse (`check_structure.py` warns about very long blocks), the scan shifts
+    from page to page: set `"per_page_margin": true` and `"indent"` to the real indent, the
+    distance between the common `left` values of `pdftohtml -xml` on a few pages.
+  - Headings need `heading_patterns`. Write spaces in them as `\s+`, because OCR lines hold
+    runs of spaces, and list the continuation lines of wrapped titles as well.
+  - Read `removed_margin_text`: a real line can be taken for a running head. Restore it in
+    `book.html`.
+  - A line-end `¬` is joined like a soft hyphen. Pieces of words that `check_text.py` still
+    lists can come from `pdftotext` reading lines out of order, so look at those pages.
+  - The checks compare against the OCR text, so they cannot see a misread word. Say so in
+    the final response.
 
 ## 2. Reconstruct the HTML
 
@@ -121,6 +138,7 @@ Config keys you will use most:
 | `dictionary` | a word list or Hunspell `.dic` for the book's language, to decide line-end hyphens (macOS has `/usr/share/dict/words` for English) |
 | `heading_patterns` | `{"regex": level}` for headings the type alone does not reveal |
 | `min_figure_area` | smallest image kept as a figure, as a share of the page (default 0.015) |
+| `per_page_margin`, `indent` | measure the left margin on each page, and set the paragraph indent, for a scan that shifts page by page |
 
 ### Review loop (mandatory)
 

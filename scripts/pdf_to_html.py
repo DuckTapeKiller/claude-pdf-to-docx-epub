@@ -85,6 +85,8 @@ DEFAULT_CONFIG = {
     'header_band': None, 'footer_band': None,  # y limits in pdftohtml units
     'superscript_ratio': 0.75,   # max size ratio of a note marker to its line
     'keep_hyphen_words': [],     # compounds whose line-end hyphen is real
+    'indent': None,              # paragraph indent in the report's units, when the measured one is wrong
+    'per_page_margin': False,    # measure the left margin on each page (a scan that shifts page by page)
     'hanging_sections': [],      # extra heading texts whose entries use hanging indents
     'min_figure_area': 0.015,    # smallest raster image kept as a figure (share of the page)
     'dictionary': None,          # word list for hyphenation evidence (default for English: /usr/share/dict/words)
@@ -340,6 +342,7 @@ def load_layout(xml_path: Path, config: dict, report: Report):
                     for part, marked in split_smallcaps(piece):
                         part_text = ''.join(mapping.get(c, c) for c in part) if mapping else part
                         part_text = clean_text(part_text)
+                        part_text = re.sub(r'¬\s*$', '\u00ad', part_text)   # a scan's line-end hyphen
                         run = Run(part_text, node.get('font'), size, family, italic, bold,
                                   left + width * offset / total, top, width * len(part) / total, height)
                         run.smallcaps = font_smallcaps or marked
@@ -1622,7 +1625,7 @@ def build_blocks(all_lines, geometry, config, report: Report, images: dict | Non
                  outline_active: bool = False):
     images = images or {}
     body_size = geometry['body_size']
-    pitch, indent = geometry['pitch'], geometry['indent']
+    pitch, indent = geometry['pitch'], config['indent'] or geometry['indent']
     quote_sizes = set(geometry['quote_sizes'])
     heading_fonts = config['heading_fonts']
     skip = set(config['skip_pages'])
@@ -1697,6 +1700,8 @@ def build_blocks(all_lines, geometry, config, report: Report, images: dict | Non
             if id(line) in captions:
                 continue
             margin = geometry['margin'].get(number % 2, geometry['margin'].get(0, 0))
+            if config['per_page_margin'] and content:
+                margin = collections.Counter(round(l.left / 12) for l in content).most_common(1)[0][0] * 12
             gap_before = (line.top - content[index - 1].bottom) if index else None
             if line.outline is not None:
                 # a heading the PDF's bookmarks point to: their level, their extent
@@ -1828,7 +1833,8 @@ def build_blocks(all_lines, geometry, config, report: Report, images: dict | Non
             indented = indent * 0.5 < line.left - margin < indent * 3 and not line.beside_dropcap
             if current is not None and current.kind == kind == 'p':
                 gap = None if new_page else line.top - previous_line.bottom
-                if indented or (gap is not None and gap > pitch * 0.9):
+                divided = previous_line.text.rstrip().endswith('\u00ad')   # a word continues here
+                if not divided and (indented or (gap is not None and gap > pitch * 0.9)):
                     flush()
                     current = Block('p', [line], page=number)
                     if not indented:
@@ -2128,6 +2134,7 @@ def render(blocks, notes, all_lines, geometry, vocab, config, report: Report, me
                 pieces.append(runs_to_html(assemble(group, vocab, config, report)))
             style = {'centered': ('centered', 'Centered'), 'right': ('right', 'Right')}.get(block.css)
             body = '<br />'.join(p for p in pieces if p)
+            body = body.replace('\u00ad<br />', '')
             if style:
                 out.append(f'<div class="{style[0]}" data-custom-style="{style[1]}"><p>{body}</p></div>')
             else:
@@ -2178,8 +2185,8 @@ def render(blocks, notes, all_lines, geometry, vocab, config, report: Report, me
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--pdf', required=True, type=Path)
-    parser.add_argument('--out', required=True, type=Path, help='book HTML to write')
+    parser.add_argument('--pdf', required='--print-config' not in sys.argv, type=Path)
+    parser.add_argument('--out', required='--print-config' not in sys.argv, type=Path, help='book HTML to write')
     parser.add_argument('--config', type=Path, help='JSON config (see DEFAULT_CONFIG in this script)')
     parser.add_argument('--report', type=Path, help='JSON report (default: OUT with .report.json)')
     parser.add_argument('--media', type=Path, help='directory for extracted raster images (default: no images)')
